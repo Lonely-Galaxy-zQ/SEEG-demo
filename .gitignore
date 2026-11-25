@@ -1,0 +1,17 @@
+# Case materials and generated reports stay on the machine where they are used.
+/Patient_*/
+/data/
+/exports/
+/docs/screenshots/
+/docs/临床资料关联说明.md
+/docs/演示口播稿.md
+/docs/现状分析与优化计划.*
+/.tmp/
+/.runtime/
+/.preview/
+/.aris/
+/AGENTS.md
+__pycache__/
+*.py[cod]
+.venv/
+.env

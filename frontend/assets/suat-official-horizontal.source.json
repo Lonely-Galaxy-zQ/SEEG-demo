@@ -1,0 +1,17 @@
+{
+  "institution_zh": "深圳理工大学",
+  "institution_en": "Shenzhen University of Advanced Technology",
+  "abbreviation": "SUAT",
+  "official_page_url": "https://www.suat-sz.edu.cn/xxgk/xywh.htm",
+  "official_identity_download_page_url": "https://www.suat-sz.edu.cn/info/1007/1106.htm",
+  "asset_url": "https://www.suat-sz.edu.cn/__local/F/C7/DE/ACE4855FEB57A96C393DBF456FB_EDC5CB26_3CD46.jpg",
+  "asset_html_attribute": "校园文化页 学校标识 image orisrc",
+  "file": "suat-official-horizontal.jpg",
+  "width_px": 2568,
+  "height_px": 1111,
+  "format": "JPEG",
+  "transparent": false,
+  "description": "官方紫色校徽与深灰中英文校名横向组合，白色背景。原始资产完整保存，未裁剪、重画或改色。",
+  "retrieved_on": "2026-10-27",
+  "notes": "现行SUAT英文全称；官网header的logo0605.png使用白字，故选择校园文化页的原始深灰字横版，适合浅色页面。展示时保持原始宽高比。"
+}

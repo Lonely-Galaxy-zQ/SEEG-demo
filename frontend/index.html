@@ -1,0 +1,2782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEEG Studio · 探测目标与协同路径规划 v3</title>
+    <style>
+        /* ============================================================
+           全局基础样式
+           ============================================================ */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+            background: #1a1a2e;
+            color: white;
+            font-weight: 500;                      /* [清晰度] 默认字重提到 Medium，录屏不发虚 */
+            -webkit-font-smoothing: antialiased;   /* [清晰度] 子像素抗锯齿 */
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            letter-spacing: 0.2px;
+        }
+
+        /* ============================================================
+           导入/确认面板（居中卡片）
+           ============================================================ */
+        .center-panel {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            z-index: 100;
+        }
+        .panel-card {
+            background: rgba(40, 40, 60, 0.95);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            padding: 50px 60px;
+            text-align: center;
+            min-width: 500px;
+        }
+        /* 首页 panel-card 单独放大（仅 import-panel 下面的 .panel-card） */
+        #import-panel .panel-card {
+            padding: 80px 100px;
+            min-width: 720px;
+        }
+        .panel-title {
+            color: #4ecdc4;
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .panel-subtitle {
+            color: rgba(255,255,255,0.6);
+            font-size: 26px;
+            margin-bottom: 24px;
+        }
+
+        /* ============================================================
+           按钮样式
+           ============================================================ */
+        .btn {
+            background: rgba(78, 205, 196, 0.35);
+            border: 1px solid rgba(78, 205, 196, 0.6);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            padding: 22px 56px;
+            font-size: 30px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #4ecdc4;
+            color: #1a1a2e;
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-small {
+            padding: 12px 22px;
+            font-size: 20px;
+            border-radius: 5px;
+        }
+        /* 首页主按钮：大气加冕版 */
+        .btn-hero {
+            padding: 32px 110px !important;
+            font-size: 38px !important;
+            letter-spacing: 4px;
+            border-radius: 14px !important;
+            box-shadow: 0 0 40px rgba(78,205,196,0.35);
+            animation: hero-pulse 2.5s ease-in-out infinite;
+        }
+        @keyframes hero-pulse {
+            0%, 100% { box-shadow: 0 0 30px rgba(78,205,196,0.25); }
+            50%      { box-shadow: 0 0 56px rgba(78,205,196,0.55); }
+        }
+
+        /* ============================================================
+           进度条
+           ============================================================ */
+        #progress-area {
+            width: 100%;
+            margin-top: 20px;
+        }
+        #progress-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        #progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4ecdc4, #44b8a8);
+            transition: width 0.3s ease;
+        }
+        #progress-text {
+            color: rgba(255,255,255,0.7);
+            font-size: 18px;
+            margin-top: 8px;
+        }
+
+        /* ============================================================
+           病人信息卡
+           ============================================================ */
+        .patient-info {
+            margin-bottom: 16px;
+        }
+        .patient-info .pid {
+            color: #4ecdc4;
+            font-size: 56px;
+            font-weight: bold;
+        }
+        .patient-info .meta {
+            color: rgba(255,255,255,0.6);
+            font-size: 26px;
+            margin-top: 6px;
+        }
+
+        /* ============================================================
+           场景容器（三栏布局）
+           ============================================================ */
+        #scene-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* 左侧：电极列表 */
+        #electrode-list {
+            width: 320px;
+            flex-shrink: 0;
+            background: rgba(40, 40, 60, 0.92);
+            backdrop-filter: blur(8px);
+            overflow-y: auto;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        .electrode-list-title {
+            padding: 20px;
+            color: #4ecdc4;
+            font-weight: bold;
+            font-size: 26px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .electrode-item {
+            padding: 14px 20px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+            font-size: 22px;
+        }
+        .electrode-item:hover {
+            background: rgba(78, 205, 196, 0.1);
+        }
+        .electrode-item.active {
+            border-left-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.15);
+        }
+        .electrode-item.current-anim {
+            border-left-color: #ffd700;
+            background: rgba(255, 215, 0, 0.1);
+        }
+        .electrode-item.completed {
+            border-left-color: #44b8a8;
+        }
+        .electrode-item .elec-name {
+            font-weight: bold;
+        }
+        .electrode-item .elec-sub {
+            color: rgba(255,255,255,0.5);
+            font-size: 19px;
+        }
+
+        /* 中央：Three.js 画布 */
+        #three-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        /* 右侧：指标面板 */
+        #metrics-panel {
+            width: 380px;
+            flex-shrink: 0;
+            background: rgba(40, 40, 60, 0.92);
+            backdrop-filter: blur(8px);
+            overflow-y: auto;
+            border-left: 1px solid rgba(255,255,255,0.1);
+        }
+        .metrics-title {
+            padding: 20px;
+            color: #4ecdc4;
+            font-weight: bold;
+            font-size: 28px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .metric-item {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .metric-label {
+            color: rgba(255,255,255,0.6);
+            font-size: 20px;
+            margin-bottom: 4px;
+        }
+        .metric-value {
+            font-size: 38px;
+            font-weight: bold;
+        }
+        .metric-unit {
+            font-size: 18px;
+            color: rgba(255,255,255,0.5);
+            margin-left: 2px;
+        }
+
+        /* ============================================================
+           顶部动画状态栏
+           ============================================================ */
+        #anim-status {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(40, 40, 60, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-size: 22px;
+            color: #ffd700;
+            z-index: 10;
+            white-space: nowrap;
+        }
+
+        /* ============================================================
+           视角按钮组
+           ============================================================ */
+        #view-buttons {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+            z-index: 10;
+        }
+        .view-btn {
+            background: rgba(40, 40, 60, 0.85);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            padding: 10px 22px;
+            font-size: 20px;            /* [清晰度] 17→20 */
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .view-btn:hover {
+            background: rgba(78, 205, 196, 0.3);
+            border-color: #4ecdc4;
+        }
+
+        /* ============================================================
+           重播按钮
+           ============================================================ */
+        #replay-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 10;
+        }
+
+        /* ============================================================
+           底部操作提示
+           ============================================================ */
+        #help-text {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.65);   /* [清晰度] 0.4→0.65 提升对比 */
+            font-size: 19px;                  /* [清晰度] 17→19 */
+            font-weight: 500;
+            z-index: 10;
+        }
+
+        /* ============================================================
+           返回首页按钮
+           ============================================================ */
+        #home-btn {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 10;
+        }
+
+        /* ============================================================
+           病人历史列表
+           ============================================================ */
+        .patient-history-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.2s;
+            font-size: 18px;
+        }
+        .patient-history-item:hover {
+            background: rgba(78, 205, 196, 0.1);
+        }
+        .patient-history-item.active {
+            border-left-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.15);
+        }
+        .patient-history-item .ph-name {
+            font-weight: bold;
+            font-size: 20px;
+        }
+        .patient-history-item .ph-time {
+            color: rgba(255,255,255,0.55);
+            font-size: 18px;            /* [清晰度] 16→18 */
+        }
+        .sidebar-divider {
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            margin: 4px 0;
+        }
+
+        /* ============================================================
+           显示控制面板
+           ============================================================ */
+        .display-controls-header {
+            padding: 16px 20px;
+            color: #4ecdc4;
+            font-weight: bold;
+            font-size: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            user-select: none;
+        }
+        .display-controls-header:hover {
+            background: rgba(78, 205, 196, 0.05);
+        }
+        .display-control-item {
+            padding: 8px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 18px;
+        }
+        .display-control-item label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+            cursor: pointer;
+            color: rgba(255,255,255,0.8);
+        }
+        .display-control-item input[type="checkbox"] {
+            accent-color: #4ecdc4;
+        }
+        .display-control-item input[type="range"] {
+            width: 100px;
+            accent-color: #4ecdc4;
+            cursor: pointer;
+        }
+
+        /* ============================================================
+           显示/隐藏控制
+           ============================================================ */
+        .hidden { display: none !important; }
+
+        /* ============================================================
+           加载阶段：AI 思考气泡列表（替代原单行进度条）
+           ============================================================ */
+        #loading-thoughts-area {
+            margin-top: 20px;
+            width: 100%;
+        }
+        #loading-thoughts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 360px;
+            min-height: 220px;
+            overflow-y: auto;
+            padding: 8px 0;
+            text-align: left;
+        }
+        .loading-thought {
+            background: rgba(78, 205, 196, 0.08);
+            border-left: 3px solid #4ecdc4;
+            padding: 10px 14px;
+            font-size: 22px;
+            color: rgba(255, 255, 255, 0.9);
+            border-radius: 0 6px 6px 0;
+            opacity: 0;
+            transform: translateY(6px);
+            animation: thought-in 0.32s ease-out forwards;
+            line-height: 1.6;
+        }
+        .loading-thought.stream-bubble {
+            white-space: pre-wrap;      /* 保留 \n\n 用于段落分隔 */
+            min-height: 40px;
+            font-size: 22px;
+        }
+        #loading-progress-hint {
+            margin-top: 14px;
+            padding: 4px 4px 0;
+            font-size: 19px;            /* [清晰度] 16→19 */
+            color: rgba(255, 255, 255, 0.7);
+            text-align: left;
+            min-height: 22px;
+            font-style: italic;
+        }
+        .loading-thought.success {
+            border-left-color: #ffd700;
+            color: #ffe89c;
+        }
+        @keyframes thought-in {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #loading-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 14px;
+        }
+        #loading-progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4ecdc4, #44b8a8);
+            transition: width 0.3s ease;
+        }
+
+        /* ============================================================
+           探测需求与术前分析
+           ============================================================ */
+        .ai-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            pointer-events: none;
+        }
+        .ai-overlay > * { pointer-events: auto; }
+
+        .prompt-card-large {
+            background: rgba(40, 40, 60, 0.96);
+            backdrop-filter: blur(8px);
+            border-radius: 14px;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            padding: 36px 44px;
+            min-width: 720px;
+            max-width: 880px;
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        }
+        .prompt-card-large .prompt-title {
+            color: #4ecdc4;
+            font-size: 26px;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+        .prompt-card-large .prompt-hint {
+            color: rgba(255,255,255,0.75);    /* [清晰度] 提对比 */
+            font-size: 19px;                   /* [清晰度] 17→19 */
+            margin-bottom: 18px;
+        }
+        .prompt-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: flex-end;
+        }
+
+        /* Candidate plan cards. */
+        .plan-selector-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+        .plan-selector-title {
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+        }
+        .plan-selector-subtitle {
+            color: rgba(255,255,255,0.9);     /* [清晰度] 0.75→0.9 */
+            font-size: 20px;                   /* [清晰度] 18→20 */
+            font-weight: 500;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+            margin-top: -16px;
+        }
+        .plan-cards-row {
+            display: flex;
+            gap: 24px;
+        }
+        .plan-card {
+            background: rgba(40, 40, 60, 0.96);
+            backdrop-filter: blur(8px);
+            border-radius: 14px;
+            padding: 28px 32px;
+            min-width: 260px;
+            border: 2px solid rgba(255,255,255,0.12);
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+            text-align: center;
+            position: relative;
+        }
+        .plan-card:hover {
+            transform: translateY(-6px);
+            border-color: rgba(78, 205, 196, 0.7);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .plan-card.recommended {
+            border-color: #4ecdc4;
+            box-shadow: 0 6px 24px rgba(78, 205, 196, 0.3);
+        }
+        .plan-card .plan-badge {
+            position: absolute;
+            top: -12px;
+            right: 16px;
+            background: #ffd700;
+            color: #1a1a2e;
+            font-size: 16px;            /* [清晰度] 13→16 */
+            font-weight: bold;
+            padding: 5px 12px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
+        .plan-card .plan-needles {
+            font-size: 72px;
+            font-weight: bold;
+            color: #4ecdc4;
+            line-height: 1;
+        }
+        .plan-card .plan-needles-unit {
+            font-size: 26px;
+            color: rgba(255,255,255,0.7);
+            margin-left: 4px;
+        }
+        .plan-card .plan-tag {
+            font-size: 26px;
+            font-weight: bold;
+            color: #ffd700;
+            margin: 12px 0 18px 0;
+            padding: 6px 12px;
+            background: rgba(255, 215, 0, 0.12);
+            border-radius: 8px;
+            display: inline-block;
+        }
+        .plan-card .plan-metrics {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 21px;                  /* [清晰度] 19→21 */
+            font-weight: 500;
+            color: rgba(255,255,255,0.9);     /* [清晰度] 0.75→0.9 */
+            text-align: left;
+            margin-top: 14px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 14px;
+        }
+        .plan-card .plan-metrics .pm-row {
+            display: flex;
+            justify-content: space-between;
+        }
+        .plan-card .plan-metrics .pm-value {
+            color: #4ecdc4;
+            font-weight: bold;
+        }
+
+        /* ============================================================
+           [v2 改造] 顶部方案切换条
+           ============================================================ */
+        #plan-switch-bar {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 11;
+            background: rgba(40, 40, 60, 0.92);
+            backdrop-filter: blur(8px);
+            padding: 10px 14px;
+            border-radius: 12px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+            border: 1px solid rgba(78,205,196,0.25);
+        }
+        .plan-switch-btn {
+            background: rgba(78, 205, 196, 0.18);
+            border: 1px solid rgba(78, 205, 196, 0.45);
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            padding: 12px 22px;
+            font-size: 19px;
+            transition: all 0.2s;
+        }
+        .plan-switch-btn:hover {
+            background: rgba(78, 205, 196, 0.45);
+        }
+        .plan-switch-btn.active {
+            background: #4ecdc4;
+            color: #1a1a2e;
+            border-color: #4ecdc4;
+            box-shadow: 0 0 16px rgba(78,205,196,0.5);
+        }
+        #plan-switch-bar.locked {
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        /* ============================================================
+           [v2 改造] 隐藏反馈框（编辑模式入口）
+           ============================================================ */
+        #feedback-box {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            z-index: 12;
+            background: rgba(40, 40, 60, 0.55);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 10px 14px;
+        }
+        #feedback-input {
+            width: 240px;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: rgba(255,255,255,0.92);
+            font-size: 17px;            /* [清晰度] 14→17 */
+            font-family: inherit;
+        }
+        #feedback-input::placeholder {
+            color: rgba(255,255,255,0.35);
+        }
+
+        /* ============================================================
+           [v2 改造] 编辑模式工具条
+           ============================================================ */
+        #edit-toolbar {
+            position: absolute;
+            top: 80px;
+            left: 16px;
+            right: 16px;
+            z-index: 14;
+            display: flex;
+            gap: 14px;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+        #edit-toolbar .edit-col {
+            background: rgba(40, 40, 60, 0.95);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 16px 18px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+            border: 1px solid rgba(255, 215, 0, 0.35);
+            pointer-events: auto;
+        }
+        #edit-toolbar .edit-col-left { min-width: 320px; }
+        #edit-toolbar .edit-col-right {
+            min-width: 320px;
+            max-width: 360px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        #edit-toolbar .edit-title {
+            color: #ffd700;
+            font-size: 22px;            /* [清晰度] 18→22 */
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+        #edit-toolbar .edit-row {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+        }
+        #edit-toolbar .edit-label {
+            color: rgba(255,255,255,0.85);
+            margin-right: 8px;
+            font-size: 18px;            /* [清晰度] 16→18 */
+        }
+        #edit-toolbar select {
+            background: rgba(20,20,30,0.6);
+            color: white;
+            border: 1px solid rgba(78,205,196,0.4);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 18px;            /* [清晰度] 16→18 */
+            outline: none;
+        }
+        #edit-visibility-list .ev-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 17px;            /* [清晰度] 15→17 */
+            color: rgba(255,255,255,0.9);
+            border-bottom: 1px dashed rgba(255,255,255,0.08);
+        }
+        #edit-visibility-list .ev-row .ev-name {
+            font-weight: bold;
+            min-width: 60px;
+        }
+        #edit-visibility-list .ev-row label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            color: rgba(255,255,255,0.75);
+        }
+        #edit-visibility-list input[type="checkbox"] {
+            accent-color: #4ecdc4;
+        }
+    </style>
+    <link rel="stylesheet" href="/v3.css?v=20261028.1">
+</head>
+<body data-state="import">
+    <header class="studio-header">
+        <div class="header-brands">
+        <div class="university-brand"><img id="suat-logo" src="/assets/suat-official-horizontal.jpg" alt="深圳理工大学 Shenzhen University of Advanced Technology" width="2568" height="1111"></div>
+        <a class="studio-brand" href="#" onclick="goHome(); return false;"><span class="brand-mark">S</span><span>SEEG <b>Studio</b><small>探测目标与协同路径规划</small></span><span class="version-badge">v3</span></a>
+        </div>
+        <nav id="workflow-steps" aria-label="规划步骤"><span data-step="0" class="active"><i>01</i>导入病例</span><em>—</em><span data-step="1"><i>02</i>术前分析</span><em>—</em><span data-step="2"><i>03</i>方案选择</span><em>—</em><span data-step="3"><i>04</i>三维评估</span></nav>
+        <span id="workspace-context" class="workspace-context">临床科研工作台</span>
+    </header>
+
+    <!-- ============================================================
+         STATE_IMPORT：导入面板
+         ============================================================ -->
+    <div id="import-panel" class="center-panel">
+        <div class="panel-card">
+            <div class="eyebrow">SEEG PLANNING WORKSPACE</div>
+            <div class="panel-title">从临床线索，走向三维规划</div>
+            <div class="panel-subtitle">临床报告 · 影像资料 · 植入规划</div>
+            <div class="import-dropzone"><div class="upload-symbol">↥</div><h2>导入病例资料</h2><p>选择已准备好的病例资料文件夹</p>
+            <input type="file" id="folder-input" webkitdirectory style="display:none">
+            <input type="file" id="patient-json-input" accept=".json,application/json" style="display:none">
+            <button class="btn btn-hero" id="import-btn">导入病例资料 <span>↗</span></button>
+            </div>
+            <div id="import-error" class="inline-error hidden" role="alert"></div>
+            <button class="btn hidden" id="view-history-btn" onclick="showHistorySelector()" style="margin-top: 12px;">查看已处理结果</button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         STATE_CONFIRM：病例确认与资料处理流程
+         ============================================================ -->
+    <div id="confirm-panel" class="center-panel hidden">
+        <div class="panel-card" id="confirm-card">
+            <div id="patient-card" class="patient-info"></div>
+            <div class="confirm-actions"><button class="text-button" id="confirm-back-btn">← 返回导入</button><button class="btn" id="start-btn">进入规划工作台 →</button></div>
+
+            <!-- 加载阶段：资料处理进度 -->
+            <div id="loading-thoughts-area" class="hidden">
+                <section id="case-workflow" class="case-workflow" aria-label="病例导入流程">
+                    <div class="workflow-heading"><h3>病例资料处理</h3><span id="case-workflow-status" role="status">正在读取病例资料</span></div>
+                    <ol id="case-workflow-steps">
+                        <li data-workflow-step="0" class="pending"><span class="workflow-step-number">01</span><div><strong>读取病例资料</strong><small>病例信息与检查记录</small></div></li>
+                        <li data-workflow-step="1" class="pending"><span class="workflow-step-number">02</span><div><strong>整理探测需求</strong><small>病史、诊断与定位线索</small></div></li>
+                        <li data-workflow-step="2" class="pending"><span class="workflow-step-number">03</span><div><strong>构建三维解剖</strong><small>大脑、血管与颅骨</small></div></li>
+                        <li data-workflow-step="3" class="pending"><span class="workflow-step-number">04</span><div><strong>定位探测目标</strong><small>探测目标与解剖区域</small></div></li>
+                        <li data-workflow-step="4" class="pending"><span class="workflow-step-number">05</span><div><strong>准备植入方案</strong><small>电极路径与候选安排</small></div></li>
+                    </ol>
+                </section>
+                <div id="loading-thoughts-list"></div>
+                <div id="loading-progress-hint"></div>
+                <div id="loading-progress-bar">
+                    <div id="loading-progress-fill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         STATE_ANIM / STATE_INTERACT：3D 场景 + 侧边栏
+         ============================================================ -->
+    <div id="scene-container" class="hidden">
+        <aside id="clinical-panel" aria-label="病例背景与术前分析">
+            <div class="clinical-top"><span class="eyebrow">CLINICAL CONTEXT</span><h2 id="clinical-patient-id">病例资料</h2><div id="clinical-meta" class="muted"></div></div>
+            <section class="clinical-section"><div class="section-kicker">诊断与病史</div><div id="clinical-diagnosis"></div><p id="clinical-history"></p></section>
+            <section class="clinical-section clinical-source-section"><details id="report-details"><summary>病例报告 <span>展开阅读</span></summary><h3 id="clinical-report-title" class="report-heading"></h3><div id="clinical-report" class="source-text"></div></details><details id="sources-details"><summary>检查资料 <span id="clinical-record-count"></span></summary><div id="clinical-imaging" class="source-text"></div><div id="clinical-sources"></div></details></section>
+            <section class="clinical-section"><div class="section-kicker">目标脑区 <span id="region-count"></span></div><div id="clinical-regions" class="region-chips"></div><div class="micro-hint">点击脑区，在三维视图中定位</div></section>
+            <section class="clinical-section analysis-section"><div class="section-kicker">术前分析</div><div id="analysis-status" role="status">等待开始术前分析</div><div id="analysis-output" aria-live="polite">开始术前分析，查看探测目标与脑区位置。</div><div id="analysis-errors" class="hidden"><p id="analysis-error-message"></p><button class="btn btn-small" id="analysis-retry-btn">重新分析</button></div></section>
+        </aside>
+        <!-- 左侧：病人历史 + 电极列表 -->
+        <div id="electrode-list">
+            <div id="patient-history" class="hidden">
+                <div class="electrode-list-title">已处理病人</div>
+                <div id="patient-history-items"></div>
+                <div class="sidebar-divider"></div>
+            </div>
+            <div class="electrode-list-title">电极列表</div>
+        </div>
+
+        <!-- 中央：Three.js 画布 -->
+        <div id="three-container">
+            <div id="anim-status" class="hidden"></div>
+
+            <!-- 术前探测目标 -->
+            <div id="prompt-overlay" class="ai-overlay hidden">
+                <div class="prompt-card-large">
+                    <div class="prompt-eyebrow">EXPLORATION GOAL</div>
+                    <div class="prompt-title">术前探测目标</div>
+                    <div class="prompt-hint">从探测需求出发，查看目标脑区的三维位置，再选择植入方案。</div>
+                    <div class="demand-background"><h3>病例背景</h3><p id="prompt-diagnosis"></p><p id="prompt-history"></p></div>
+                    <section class="prompt-targets"><div class="section-kicker">目标脑区</div><div id="prompt-regions" class="region-chips"></div></section>
+                    <div class="prompt-actions">
+                        <button class="btn" id="start-ai-btn">开始术前分析 →</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="analysis-review-panel" class="ai-overlay hidden">
+                <section class="analysis-review-card" aria-label="术前分析阅读区">
+                    <div class="analysis-review-heading"><div><span class="eyebrow">PREOPERATIVE ANALYSIS</span><h2>术前分析 <span id="story-step-title"></span></h2><p id="analysis-review-status" role="status">正在准备术前分析</p></div></div>
+                    <div id="story-stages" aria-label="术前分析进度"></div>
+                    <div id="analysis-review-text" aria-live="polite"></div>
+                    <div id="analysis-review-regions" class="region-chips"></div>
+                    <div id="analysis-review-actions" class="hidden">
+                        <span id="analysis-read-countdown"></span>
+                        <div class="analysis-review-buttons"><button id="analysis-keep-reading" class="text-button">继续阅读</button><button id="analysis-view-plans" class="btn">查看植入方案 →</button></div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 方案选择 -->
+            <div id="plan-selector-overlay" class="ai-overlay hidden">
+                <div class="plan-selector-wrapper">
+                    <div class="plan-selector-title">候选植入方案</div>
+                    <div id="plan-cards-row" class="plan-cards-row"></div>
+                </div>
+            </div>
+
+            <button class="btn btn-small hidden" id="home-btn" onclick="goHome()">返回首页</button>
+            <button class="btn btn-small hidden" id="replay-btn" onclick="replayAnimation()">重播动画</button>
+
+            <!-- [v2 改造] 顶部方案切换条（INTERACT 阶段显示） -->
+            <div id="plan-switch-bar" class="hidden">
+                <button class="plan-switch-btn" data-plan="A">经济方案</button>
+                <button class="plan-switch-btn" data-plan="B">平衡方案</button>
+                <button class="plan-switch-btn" data-plan="C">精确方案</button>
+            </div>
+
+            <!-- [v2 改造] 隐藏入口：右下角反馈框（INTERACT 阶段显示） -->
+            <button id="edit-plan-btn" class="btn btn-small hidden" onclick="enterEditMode()">微调方案</button>
+            <div id="feedback-box" class="hidden">
+                <input type="text" id="feedback-input" placeholder="记录医生备注…" autocomplete="off">
+            </div>
+
+            <!-- [v2 改造] 编辑模式工具条（仅编辑模式显示） -->
+            <div id="edit-toolbar" class="hidden">
+                <div class="edit-col edit-col-left">
+                    <div class="edit-title">编辑模式 · 拖拽红/绿球调整路径</div>
+                    <div class="edit-row">
+                        <span class="edit-label">当前编辑：</span>
+                        <select id="edit-electrode-select"></select>
+                    </div>
+                    <div class="edit-row" style="gap:10px;">
+                        <button class="btn btn-small" id="edit-save-btn">保存编辑</button>
+                        <button class="btn btn-small btn-secondary" id="edit-cancel-btn">取消编辑</button>
+                    </div>
+                </div>
+                <div class="edit-col edit-col-right">
+                    <div class="edit-title">显隐控制</div>
+                    <div class="edit-row" style="gap:8px; margin-bottom:6px;">
+                        <button class="btn btn-small" id="edit-show-all-btn" style="font-size:16px; padding:6px 14px;">全部显示</button>
+                        <button class="btn btn-small" id="edit-hide-all-btn" style="font-size:16px; padding:6px 14px;">全部隐藏</button>
+                    </div>
+                    <div id="edit-visibility-list"></div>
+                </div>
+            </div>
+
+            <div id="help-text" class="hidden">左键旋转 | 右键平移 | 滚轮缩放 | 点击电极查看详情</div>
+        </div>
+
+        <!-- 右侧：指标面板 + 显示控制 -->
+        <div id="metrics-panel" class="hidden">
+            <div class="metrics-title">电极指标</div>
+            <div id="metrics-content"></div>
+            <div class="display-controls-header" onclick="toggleDisplayControls()">
+                显示控制 <span id="display-controls-arrow">▼</span>
+            </div>
+            <div id="display-controls"></div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         CDN 脚本（Three.js r128）
+         ============================================================ -->
+    <script src="/vendor/three-r128.min.js"></script>
+    <script src="/vendor/OrbitControls-r128.js"></script>
+    <script src="/vendor/STLLoader-r128.js"></script>
+    <script src="/vendor/TransformControls-r128.js"></script>
+
+    <script>
+    // [v2 调试] 全局错误监听：把任何未捕获的脚本错误打到 console，便于 F12 排查
+    window.addEventListener('error', (e) => {
+        console.error('[v2 全局错误]', e.message, 'at', e.filename + ':' + e.lineno, e.error);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+        console.error('[v2 未捕获 Promise]', e.reason);
+    });
+    // ============================================================
+    // 模块 1：全局状态和常量
+    // ============================================================
+
+    const APP_STATE = {
+        IMPORT: 'import',
+        CONFIRM: 'confirm',
+        PROMPT: 'prompt',           // 查看术前探测目标
+        PARSING: 'parsing',         // 术前分析讲解与三维展示
+        PLAN_SELECT: 'plan_select', // [规划流程] 阶段 C：等待用户选择方案
+        ANIM: 'anim',
+        INTERACT: 'interact'
+    };
+    let currentState = APP_STATE.IMPORT;
+    let patientId = null;
+    let sceneData = null;
+
+    // Three.js 全局
+    let scene, camera, renderer, controls;
+    let sceneCenter = null;
+    let animationFrameId = null;
+
+    // 解剖结构网格
+    const anatomyMeshes = {};
+
+    // 电极相关
+    const electrodeMeshes = [];
+    const entryPointMeshes = [];
+    const implantPointMeshes = [];
+    let selectedElectrodeIndex = -1;
+
+    // 靶点脑区 mesh
+    const targetRegionMeshes = {};  // {电极名: THREE.Mesh}
+
+    // 多病人缓存
+    const patientCache = {};        // {patient_id: {sceneData, timestamp}}
+    const processedPatients = [];   // [{id, timestamp}]
+    let currentPatientId = null;
+
+    // [规划流程] 当前选中的方案（默认 7 根 = 最经济），由阶段 C 决定
+    let activeElectrodes = null;
+
+    // [v2 改造] 三套方案缓存与当前激活方案
+    let cachedPlans = { A: null, B: null, C: null };
+    let currentPlanId = 'A';
+
+    // [v2 改造] 编辑模式相关
+    let editing = false;
+    let editSnapshot = null;
+    const pendingEdits = {};
+    let transformControlsEntry = null;
+    let transformControlsImplant = null;
+    let editingElectrodeIndex = 0;
+    // [规划流程] 阶段 A 识别出的脑区列表（电极名 → 中文脑区名）
+    let recognizedRegions = [];
+
+    // 视觉参数（严格复用 html_visualizer.py）
+    const COLORS = {
+        skull:       0xf5f5dc,
+        brain_left:  0xffb6c1,
+        brain_right: 0xffb6c1,
+        vessel:      0xff4444,
+        brainstem:   0x90ee90,
+        electrode:   0xffd700,
+        entry_point:      0x0088ff,
+        implant_endpoint: 0x00cc66,
+        target_region:    0xffa07a,  // 浅橙色（来自 html_visualizer.py）
+    };
+    const DEFAULT_OPACITY = {
+        skull: 0.25, brain_left: 0.2, brain_right: 0.2,
+        vessel: 0.5, brainstem: 0.65, electrode: 1.0,
+        target_region: 0.55,
+    };
+
+    // 动画常量
+    const ANIM_SPEED = 45;        // mm/s（加速以适配PPT汇报节奏）
+    const ANIM_PAUSE = 1500;      // 电极间停顿 ms
+    const ELECTRODE_RADIUS = 0.4; // 电极半径 mm
+    const MARKER_RADIUS = 3.0;    // 标记球半径 mm
+    const OVERSHOOT = 10;         // 颅骨外起始偏移 mm
+    const ANIM_ELECTRODE_RADIUS = 1.8;    // 动画阶段放大半径 (mm)
+    const REAL_ELECTRODE_RADIUS = 0.8;    // 交互阶段真实半径 (mm)
+    const ANIM_EMISSIVE_COLOR = 0xffa500; // 动画阶段发光色（橙金色）
+    const ANIM_EMISSIVE_INTENSITY = 0.4;  // 发光强度
+
+    // ============================================================
+    // 模块 2：UI 状态机
+    // ============================================================
+    function setState(newState) {
+        currentState = newState;
+        window.v3OnState?.(newState);
+        document.getElementById('import-panel').classList.toggle('hidden', newState !== APP_STATE.IMPORT);
+        document.getElementById('confirm-panel').classList.toggle('hidden', newState !== APP_STATE.CONFIRM);
+        // 首页时：有历史记录则显示"查看已处理结果"按钮
+        document.getElementById('view-history-btn').classList.toggle('hidden', newState !== APP_STATE.IMPORT || processedPatients.length === 0);
+
+        // 场景容器：从阶段 A 起就要显示 3D 场景（让用户看到大脑背景）
+        const isScene = [APP_STATE.PROMPT, APP_STATE.PARSING,
+                         APP_STATE.PLAN_SELECT, APP_STATE.ANIM, APP_STATE.INTERACT].includes(newState);
+        document.getElementById('scene-container').classList.toggle('hidden', !isScene);
+        document.getElementById('anim-status').classList.toggle('hidden', newState !== APP_STATE.ANIM);
+        document.getElementById('metrics-panel').classList.toggle('hidden', newState !== APP_STATE.INTERACT);
+        document.getElementById('replay-btn').classList.toggle('hidden', newState !== APP_STATE.INTERACT);
+        document.getElementById('home-btn').classList.toggle('hidden', newState === APP_STATE.IMPORT || newState === APP_STATE.CONFIRM);
+        document.getElementById('help-text').classList.toggle('hidden', newState !== APP_STATE.INTERACT);
+        document.getElementById('patient-history').classList.toggle('hidden', processedPatients.length < 1 || !isScene);
+
+        // [规划流程] 各阶段 overlay 显隐
+        document.getElementById('prompt-overlay').classList.toggle('hidden', newState !== APP_STATE.PROMPT);
+        document.getElementById('analysis-review-panel').classList.toggle('hidden', newState !== APP_STATE.PARSING);
+        document.getElementById('plan-selector-overlay').classList.toggle('hidden', newState !== APP_STATE.PLAN_SELECT);
+
+        // [v2 改造] INTERACT 阶段显示方案切换条 + 隐藏反馈框
+        document.getElementById('plan-switch-bar').classList.toggle('hidden', newState !== APP_STATE.INTERACT);
+        document.getElementById('feedback-box').classList.toggle('hidden', newState !== APP_STATE.INTERACT);
+    }
+
+    // ============================================================
+    // 模块 5：Three.js 场景初始化
+    // ============================================================
+    function initThreeScene() {
+        const container = document.getElementById('three-container');
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf7f7fb);
+
+        camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 3000);
+        camera.up.set(0, 0, 1);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+        controls.screenSpacePanning = true;
+
+        // 光照（复用 html_visualizer.py）
+        scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight1.position.set(100, -80, 120);
+        scene.add(dirLight1);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight2.position.set(-80, 100, -60);
+        scene.add(dirLight2);
+
+        animate();
+    }
+
+    // ============================================================
+    // 模块 6：STL base64 解析加载
+    // ============================================================
+    function loadAnatomyModels() {
+        const loader = new THREE.STLLoader();
+        const allCenters = [];
+
+        for (const [name, b64] of Object.entries(sceneData.anatomy)) {
+            // base64 → ArrayBuffer
+            const binaryStr = atob(b64);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+            }
+
+            const geometry = loader.parse(bytes.buffer);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            allCenters.push(center);
+
+            const color = COLORS[name] || 0x888888;
+            const opacity = DEFAULT_OPACITY[name] || 0.5;
+
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                transparent: true,
+                opacity: opacity,
+                side: THREE.DoubleSide,
+                depthWrite: opacity > 0.5,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.userData.structureName = name;
+            scene.add(mesh);
+            anatomyMeshes[name] = mesh;
+        }
+
+        // 场景中心（所有结构 bounding box 中心的平均）
+        if (allCenters.length > 0) {
+            sceneCenter = new THREE.Vector3();
+            allCenters.forEach(c => sceneCenter.add(c));
+            sceneCenter.divideScalar(allCenters.length);
+
+            controls.target.copy(sceneCenter);
+            camera.position.set(sceneCenter.x, sceneCenter.y - 250, sceneCenter.z + 50);
+            controls.update();
+        }
+    }
+
+    // ============================================================
+    // 模块 6b：靶点脑区加载
+    // ============================================================
+    function loadTargetRegions(opts = {}) {
+        if (!sceneData.target_regions) return;
+        const loader = new THREE.STLLoader();
+        const initiallyVisible = opts.initiallyVisible !== false;  // 默认 true，术前分析时传 false
+
+        for (const [elecName, regionData] of Object.entries(sceneData.target_regions)) {
+            if (!regionData.base64) continue;
+
+            // base64 → ArrayBuffer
+            const binaryStr = atob(regionData.base64);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+                bytes[i] = binaryStr.charCodeAt(i);
+            }
+
+            const geometry = loader.parse(bytes.buffer);
+            geometry.computeVertexNormals();
+            geometry.computeBoundingBox();
+
+            const material = new THREE.MeshPhongMaterial({
+                color: COLORS.target_region,
+                transparent: true,
+                opacity: DEFAULT_OPACITY.target_region,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.userData.structureName = 'target_region';
+            mesh.userData.electrodeName = elecName;
+            mesh.userData.regionName = regionData.name;
+            mesh.visible = initiallyVisible;
+            scene.add(mesh);
+            targetRegionMeshes[elecName] = mesh;
+        }
+    }
+
+    // ============================================================
+    // 模块 7：ElectrodeAnimator 类
+    // ============================================================
+    class ElectrodeAnimator {
+        constructor(scene, entryPoint, implantEndpoint, electrodeIndex, onComplete) {
+            this.scene = scene;
+            this.entryPoint = entryPoint.clone();
+            this.implantEndpoint = implantEndpoint.clone();
+            this.electrodeIndex = electrodeIndex;
+            this.onComplete = onComplete;
+
+            // 方向：从 entry_point 指向 implant_endpoint（从颅骨表面向脑内）
+            this.dir = new THREE.Vector3().subVectors(implantEndpoint, entryPoint).normalize();
+            this.totalLength = entryPoint.distanceTo(implantEndpoint);
+
+            // 起始位置：entry_point 外侧 OVERSHOOT mm
+            this.startPos = entryPoint.clone().add(this.dir.clone().multiplyScalar(-OVERSHOOT));
+
+            this.progress = 0;
+            this.currentMesh = null;
+            this.running = false;
+            this.generation = v3Generation;
+            this.lastTime = 0;
+        }
+
+        start() {
+            this.running = true;
+            this.lastTime = performance.now();
+            this._tick = this.tick.bind(this);
+            requestAnimationFrame(this._tick);
+        }
+
+        tick(now) {
+            if (!this.running) return;
+            if (this.generation !== v3Generation) {
+                this.running = false;
+                if (this.currentMesh) {
+                    this.scene.remove(this.currentMesh);
+                    this.currentMesh.geometry.dispose();
+                    this.currentMesh.material.dispose();
+                }
+                this.onComplete();
+                return;
+            }
+
+            const dt = (now - this.lastTime) / 1000;
+            this.lastTime = now;
+            this.progress += ANIM_SPEED * dt;
+
+            // 已插入颅骨内的长度
+            const insertedLength = Math.max(0, this.progress - OVERSHOOT);
+
+            if (insertedLength > 0) {
+                // 移除旧圆柱
+                if (this.currentMesh) {
+                    this.scene.remove(this.currentMesh);
+                    this.currentMesh.geometry.dispose();
+                    this.currentMesh.material.dispose();
+                }
+
+                const actualLength = Math.min(insertedLength, this.totalLength);
+                const geometry = new THREE.CylinderGeometry(
+                    ANIM_ELECTRODE_RADIUS, ANIM_ELECTRODE_RADIUS, actualLength, 12
+                );
+                const material = new THREE.MeshPhongMaterial({
+                    color: COLORS.electrode,
+                    transparent: true,
+                    opacity: DEFAULT_OPACITY.electrode,
+                    emissive: ANIM_EMISSIVE_COLOR,
+                    emissiveIntensity: ANIM_EMISSIVE_INTENSITY,
+                });
+
+                this.currentMesh = new THREE.Mesh(geometry, material);
+
+                // 圆柱中心位置
+                const center = this.entryPoint.clone().add(
+                    this.dir.clone().multiplyScalar(actualLength / 2)
+                );
+                this.currentMesh.position.copy(center);
+
+                // 方向对齐：CylinderGeometry 默认沿 Y 轴
+                const Y_AXIS = new THREE.Vector3(0, 1, 0);
+                const quaternion = new THREE.Quaternion();
+                const dot = Y_AXIS.dot(this.dir);
+                if (dot < -0.9999) {
+                    // 近似反方向，绕 X 轴旋转 180 度
+                    quaternion.set(1, 0, 0, 0);
+                } else {
+                    quaternion.setFromUnitVectors(Y_AXIS, this.dir);
+                }
+                this.currentMesh.quaternion.copy(quaternion);
+
+                this.currentMesh.userData.electrodeIndex = this.electrodeIndex;
+                this.scene.add(this.currentMesh);
+            }
+
+            // 完成判定
+            if (this.progress >= this.totalLength + OVERSHOOT) {
+                this.running = false;
+                electrodeMeshes[this.electrodeIndex] = this.currentMesh;
+                this.onComplete();
+            } else {
+                requestAnimationFrame(this._tick);
+            }
+        }
+    }
+
+    /**
+     * 阶段 C：构造 3 套方案。基础 7 根来自真实数据；9/11 根通过在原靶区内随机扩展电极生成。
+     * [v2 改造] 改为 async：在生成 9/11 根方案前先尝试 GET /api/plan_override 拉取磁盘版，命中则替换。
+     */
+    async function buildPlanVariants(baseElectrodes) {
+        const planPatientId = patientId;
+        const planGeneration = v3Generation;
+        const planA = baseElectrodes.map(e => ({ ...e, _synthetic: false }));
+
+        // 9 根：先尝试磁盘覆盖；未命中则用扩展逻辑
+        let planB = null;
+        try {
+            const r = await fetch(`/api/plan_override?patient_id=${encodeURIComponent(planPatientId)}&needle_count=9`, { signal: v3Controller?.signal });
+            if (r.ok) {
+                const d = await r.json();
+                if (d && Array.isArray(d.electrodes)) planB = d.electrodes;
+            }
+        } catch (e) { /* 忽略，回退扩展 */ }
+        if (planGeneration !== v3Generation) return [];
+        if (!planB) planB = planA.concat(buildExtraElectrodes(baseElectrodes, 2, 2026));
+
+        // 11 根：同上
+        let planC = null;
+        try {
+            const r = await fetch(`/api/plan_override?patient_id=${encodeURIComponent(planPatientId)}&needle_count=11`, { signal: v3Controller?.signal });
+            if (r.ok) {
+                const d = await r.json();
+                if (d && Array.isArray(d.electrodes)) planC = d.electrodes;
+            }
+        } catch (e) { /* 忽略，回退扩展 */ }
+        if (planGeneration !== v3Generation) return [];
+        if (!planC) planC = planA.concat(buildExtraElectrodes(baseElectrodes, 4, 2027));
+
+        const computeMetrics = (electrodes, baseAvgCov, baseSafetyMargin) => ({
+            avgCoverage: baseAvgCov,
+            minSafety: baseSafetyMargin,
+            totalLength: electrodes.reduce((s, e) => s + (e.metrics ? e.metrics.path_length : 70), 0),
+        });
+
+        // 基础指标：从真实电极聚合
+        const realCovs = baseElectrodes.map(e => e.metrics.coverage * 100);
+        const baseAvgCov = realCovs.length ? (realCovs.reduce((a, b) => a + b, 0) / realCovs.length) : 38;
+        const realMargins = baseElectrodes.flatMap(e => [e.metrics.vessel_margin, e.metrics.brainstem_margin]);
+        const baseMinSafety = realMargins.length ? Math.min(...realMargins) : 2.4;
+
+        return [
+            {
+                id: 'A', label: `${planA.length} 根`, needles: planA.length,
+                tag: '经济方案', recommended: true,
+                avgCoverage: baseAvgCov,
+                minSafety: baseMinSafety,
+                totalLength: planA.reduce((s, e) => s + e.metrics.path_length, 0),
+                electrodes: planA,
+            },
+            {
+                id: 'B', label: `${planB.length} 根`, needles: planB.length,
+                tag: '平衡方案', recommended: false,
+                avgCoverage: Math.min(98, baseAvgCov + 8),  // 增 2 根 → 覆盖率提升约 8 点
+                minSafety: Math.max(1.5, baseMinSafety - 0.05),  // 多电极导致最小边距小幅下降
+                totalLength: planB.reduce((s, e) => s + (e.metrics ? e.metrics.path_length : 70), 0),
+                electrodes: planB,
+            },
+            {
+                id: 'C', label: `${planC.length} 根`, needles: planC.length,
+                tag: '精确方案', recommended: false,
+                avgCoverage: Math.min(99, baseAvgCov + 15),
+                minSafety: Math.max(1.5, baseMinSafety - 0.1),
+                totalLength: planC.reduce((s, e) => s + (e.metrics ? e.metrics.path_length : 70), 0),
+                electrodes: planC,
+            },
+        ];
+    }
+
+    /**
+     * 在原始靶点脑区内生成 N 根扩展电极。
+     * - 靶点：脑区 mesh bounding box 内拒绝采样（确保点在 mesh 内部）
+     * - 方向：基础方向 + ±5° 极角随机扰动 + 0~360° 方位角随机
+     * - 入颅点：从靶点沿方向投射，与颅骨求交点
+     */
+    function buildExtraElectrodes(baseElectrodes, count, seed) {
+        const rng = mulberry32(seed);
+        const skullMesh = anatomyMeshes['skull'];
+        const extras = [];
+        let attempt = 0;
+        const maxAttempts = count * 5;
+
+        while (extras.length < count && attempt < maxAttempts) {
+            attempt++;
+            const baseElec = baseElectrodes[Math.floor(rng() * baseElectrodes.length)];
+            const regionMesh = targetRegionMeshes[baseElec.name];
+            if (!regionMesh) continue;
+
+            const samplePoint = sampleInsideMesh(regionMesh, rng);
+            if (!samplePoint) continue;
+
+            const baseDir = new THREE.Vector3(...baseElec.direction).normalize();
+            const perturbedDir = perturbDirection(baseDir, rng, 5);  // ±5° 扰动
+
+            const entryPoint = projectToSkull(samplePoint, perturbedDir, skullMesh);
+            if (!entryPoint) continue;
+
+            const pathLength = entryPoint.distanceTo(samplePoint);
+            if (pathLength < 30 || pathLength > 110) continue;  // 长度合理性
+
+            extras.push({
+                id: baseElectrodes.length + extras.length + 1,
+                name: `K${baseElectrodes.length + extras.length + 1}`,
+                planning_order: baseElectrodes.length + extras.length + 1,
+                implant_endpoint: [samplePoint.x, samplePoint.y, samplePoint.z],
+                entry_point: [entryPoint.x, entryPoint.y, entryPoint.z],
+                direction: [perturbedDir.x, perturbedDir.y, perturbedDir.z],
+                metrics: {
+                    coverage: baseElec.metrics.coverage,
+                    vessel_margin: baseElec.metrics.vessel_margin,
+                    brainstem_margin: baseElec.metrics.brainstem_margin,
+                    path_length: parseFloat(pathLength.toFixed(1)),
+                },
+                _synthetic: true,
+                _baseElectrodeName: baseElec.name,
+                _targetKey: baseElec.name,
+            });
+        }
+        return extras;
+    }
+
+    /**
+     * 在 mesh bounding box 内拒绝采样一个内部点
+     * 优先使用 trimesh 的等价 raycaster 内部判定（点向某方向射线穿透 mesh 的次数为奇数）
+     */
+    function sampleInsideMesh(mesh, rng) {
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        const bbox = mesh.geometry.boundingBox;
+        const localRay = new THREE.Raycaster();
+        const upDir = new THREE.Vector3(0, 0, 1);
+
+        for (let i = 0; i < 30; i++) {
+            const p = new THREE.Vector3(
+                bbox.min.x + rng() * (bbox.max.x - bbox.min.x),
+                bbox.min.y + rng() * (bbox.max.y - bbox.min.y),
+                bbox.min.z + rng() * (bbox.max.z - bbox.min.z),
+            );
+            // 检测 p 是否在 mesh 内部：沿 +Z 射线交叉次数为奇数
+            localRay.set(p, upDir);
+            const hits = localRay.intersectObject(mesh);
+            if (hits.length % 2 === 1) {
+                return p;
+            }
+        }
+        // 兜底：返回 bbox 中心
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+        return center;
+    }
+
+    /**
+     * 围绕 baseDir 做球坐标小角度扰动
+     * @param maxThetaDeg 极角扰动范围（度）
+     */
+    function perturbDirection(baseDir, rng, maxThetaDeg) {
+        // 在 baseDir 周围的局部坐标系生成扰动
+        const baseN = baseDir.clone().normalize();
+        // 找一个与 baseN 不平行的辅助向量
+        const aux = Math.abs(baseN.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+        const tangent = new THREE.Vector3().crossVectors(baseN, aux).normalize();
+        const bitangent = new THREE.Vector3().crossVectors(baseN, tangent).normalize();
+
+        const thetaRad = (rng() * maxThetaDeg) * Math.PI / 180;
+        const phiRad = rng() * Math.PI * 2;
+
+        const offset = tangent.clone().multiplyScalar(Math.sin(thetaRad) * Math.cos(phiRad))
+            .add(bitangent.clone().multiplyScalar(Math.sin(thetaRad) * Math.sin(phiRad)));
+        const perturbed = baseN.clone().multiplyScalar(Math.cos(thetaRad)).add(offset);
+        return perturbed.normalize();
+    }
+
+    /**
+     * 从 startPoint 沿 -dir（向颅骨外）方向投射，返回与颅骨的交点（即入颅点）
+     * 注：植入方向 dir 是从入颅点指向靶点（向脑内），所以投射方向是 -dir
+     * [v2 修复] 颅骨有厚度。从脑内沿 -dir 打射线，hits 通常有内表面 + 外表面两个点，
+     *          真正的入颅点（医生穿刺位置）是颅骨**外表面**——即最远那个交点。
+     */
+    function projectToSkull(startPoint, dir, skullMesh) {
+        if (!skullMesh) return null;
+        const ray = new THREE.Raycaster(startPoint, dir.clone().multiplyScalar(-1).normalize(), 0, 400);
+        const hits = ray.intersectObject(skullMesh);
+        if (hits.length === 0) return null;
+        // 取最远命中点（颅骨外表面），如果只有 1 个交点则只能返回它
+        return hits[hits.length - 1].point.clone();
+    }
+
+    /**
+     * Mulberry32 伪随机数（确定性，便于复现同一方案）
+     */
+    function mulberry32(a) {
+        return function() {
+            a |= 0; a = a + 0x6D2B79F5 | 0;
+            let t = a;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        };
+    }
+
+    /**
+     * 阶段 C：渲染候选方案卡片
+     */
+    function renderPlanSelector(plans) {
+        const row = document.getElementById('plan-cards-row');
+        row.innerHTML = '';
+        plans.forEach(plan => {
+            const card = document.createElement('div');
+            card.setAttribute('role', 'button');
+            card.tabIndex = 0;
+            card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyPlan(plan); } });
+            card.className = 'plan-card' + (plan.recommended ? ' recommended' : '');
+            card.innerHTML = `
+                ${plan.recommended ? '<div class="plan-badge">经济方案</div>' : ''}
+                <div class="plan-needles">${plan.needles}<span class="plan-needles-unit">根</span></div>
+                <div class="plan-tag">${plan.tag}</div>
+                <div class="plan-metrics">
+                    <div class="pm-row"><span>平均覆盖率</span><span class="pm-value">${plan.avgCoverage.toFixed(1)}%</span></div>
+                    <div class="pm-row"><span>最小安全边距</span><span class="pm-value">${plan.minSafety.toFixed(2)} mm</span></div>
+                    <div class="pm-row"><span>总路径长度</span><span class="pm-value">${plan.totalLength.toFixed(0)} mm</span></div>
+                </div>
+            `;
+            card.addEventListener('click', () => applyPlan(plan));
+            row.appendChild(card);
+        });
+    }
+
+    /**
+     * 阶段 C → D：用户选定方案后，把电极列表注入并触发现有植入动画
+     */
+    function applyPlan(plan) {
+        clearElectrodesFromScene();
+        activeElectrodes = plan.electrodes;
+        // [v2 改造] 用户点的是哪一种作为初始展示，记录为当前 plan
+        currentPlanId = plan.id;
+        // 隐藏方案选择 overlay，进入动画状态
+        setState(APP_STATE.ANIM);
+        sceneData.electrodes = activeElectrodes;
+        // 动画阶段开始时，侧边栏保持为空——每根电极植入完成后再追加
+        clearElectrodeList();
+        runImplantationSequence(activeElectrodes);
+    }
+
+    // ============================================================
+    // [v2 改造] 模块 8.5：方案切换条（INTERACT 阶段顶部）
+    // ============================================================
+    /**
+     * 进入 INTERACT 时调用：高亮当前 currentPlanId 对应按钮 + 绑定切换事件
+     */
+    function setupPlanSwitchBar() {
+        const bar = document.getElementById('plan-switch-bar');
+        bar.classList.remove('locked');
+        const btns = bar.querySelectorAll('.plan-switch-btn');
+        btns.forEach(btn => { const plan = cachedPlans[btn.dataset.plan]; btn.disabled = !plan; if (plan) btn.textContent = `${plan.tag} · ${plan.electrodes.length} 根`; });
+        btns.forEach(btn => {
+            const planId = btn.dataset.plan;
+            btn.classList.toggle('active', planId === currentPlanId);
+            // 防重复绑定：先克隆替换
+            const fresh = btn.cloneNode(true);
+            btn.replaceWith(fresh);
+        });
+        // 重新查询并绑定
+        bar.querySelectorAll('.plan-switch-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (editing) return;
+                const planId = btn.dataset.plan;
+                if (planId === currentPlanId) return;
+                switchToPlan(planId);
+            });
+        });
+    }
+
+    /**
+     * 切换到指定方案：清场 → 替换电极 → 瞬时铺设（不重放动画）
+     */
+    function switchToPlan(planId) {
+        const plan = cachedPlans[planId];
+        if (!plan) return;
+        currentPlanId = planId;
+
+        // 清场：移除现有 cylinder + 标记球，清空侧栏
+        clearElectrodesFromScene();
+        clearElectrodeList();
+
+        // 替换数据
+        sceneData.electrodes = plan.electrodes;
+        activeElectrodes = plan.electrodes;
+
+        // 瞬时铺设
+        instantPlaceAllElectrodes();
+
+        // 高亮按钮
+        document.querySelectorAll('#plan-switch-bar .plan-switch-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.plan === planId);
+        });
+
+        // 跳到第 1 根
+        selectElectrode(0);
+        triggerResize();
+    }
+
+    /**
+     * 把 electrodeMeshes / entryPointMeshes / implantPointMeshes 全部从场景移除并 dispose
+     */
+    function clearElectrodesFromScene() {
+        const removeAll = (arr) => {
+            for (let i = 0; i < arr.length; i++) {
+                const m = arr[i];
+                if (!m) continue;
+                scene.remove(m);
+                if (m.geometry) m.geometry.dispose();
+                if (m.material) m.material.dispose();
+            }
+            arr.length = 0;
+        };
+        removeAll(electrodeMeshes);
+        removeAll(entryPointMeshes);
+        removeAll(implantPointMeshes);
+    }
+
+    /**
+     * 把当前 sceneData.electrodes 全部一次性铺到场景里（末态 cylinder + 标记球 + 侧栏项）
+     */
+    function instantPlaceAllElectrodes() {
+        // [v2 修复] 切换方案/加载磁盘版后：先迁移旧命名，再重映射靶区
+        migrateLegacyElectrodeNames(sceneData.electrodes);
+        sceneData.electrodes.forEach(remapElectrodeTarget);
+        sceneData.electrodes.forEach((elec, i) => {
+            const entry = new THREE.Vector3(...elec.entry_point);
+            const implant = new THREE.Vector3(...elec.implant_endpoint);
+            const dir = new THREE.Vector3().subVectors(implant, entry).normalize();
+            const totalLength = entry.distanceTo(implant);
+
+            const geometry = new THREE.CylinderGeometry(
+                REAL_ELECTRODE_RADIUS, REAL_ELECTRODE_RADIUS, totalLength, 8
+            );
+            const material = new THREE.MeshPhongMaterial({
+                color: COLORS.electrode,
+                transparent: true,
+                opacity: DEFAULT_OPACITY.electrode,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            const center = entry.clone().add(dir.clone().multiplyScalar(totalLength / 2));
+            mesh.position.copy(center);
+            const Y_AXIS = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            const dot = Y_AXIS.dot(dir);
+            if (dot < -0.9999) quaternion.set(1, 0, 0, 0);
+            else quaternion.setFromUnitVectors(Y_AXIS, dir);
+            mesh.quaternion.copy(quaternion);
+            mesh.userData.electrodeIndex = i;
+            scene.add(mesh);
+            electrodeMeshes[i] = mesh;
+
+            showEndpointMarkers(elec, i);
+            appendElectrodeItem(i);
+        });
+    }
+
+    // ============================================================
+    // 模块 8：串行动画队列
+    // ============================================================
+    async function runImplantationSequence(electrodes) {
+        const generation = v3Generation;
+        for (let i = 0; i < electrodes.length; i++) {
+            if (generation !== v3Generation) return;
+            const elec = electrodes[i];
+
+            // 更新状态栏（侧边栏此刻还没有该电极项，不做高亮）
+            document.getElementById('anim-status').textContent =
+                `正在植入电极 ${elec.id} (${elec.name}) — ${i + 1}/${electrodes.length}`;
+
+            // 执行植入动画
+            await animateElectrode(elec, i);
+            if (generation !== v3Generation) return;
+
+            // 显示标记球
+            showEndpointMarkers(elec, i);
+
+            // 该电极规划完成 —— 这时才把它作为一条新项追加到侧边栏
+            appendElectrodeItem(i);
+            highlightElectrodeItem(i, 'completed');
+
+            // 停顿
+            if (i < electrodes.length - 1) {
+                await sleep(ANIM_PAUSE);
+            }
+        }
+
+        // 全部完成，进入交互模式
+        if (generation === v3Generation) enterInteractiveMode();
+    }
+
+    function animateElectrode(elec, index) {
+        return new Promise(resolve => {
+            const entry = new THREE.Vector3(...elec.entry_point);
+            const implant = new THREE.Vector3(...elec.implant_endpoint);
+            const animator = new ElectrodeAnimator(scene, entry, implant, index, resolve);
+            animator.start();
+        });
+    }
+
+    function showEndpointMarkers(elec, index) {
+        // 入颅点球（蓝色）
+        const entryGeom = new THREE.SphereGeometry(MARKER_RADIUS, 16, 16);
+        const entryMat = new THREE.MeshPhongMaterial({ color: COLORS.entry_point });
+        const entryMesh = new THREE.Mesh(entryGeom, entryMat);
+        entryMesh.position.set(...elec.entry_point);
+        entryMesh.userData.electrodeIndex = index;
+        scene.add(entryMesh);
+        entryPointMeshes[index] = entryMesh;
+
+        // 植入终点球（绿色）
+        const implantGeom = new THREE.SphereGeometry(MARKER_RADIUS, 16, 16);
+        const implantMat = new THREE.MeshPhongMaterial({ color: COLORS.implant_endpoint });
+        const implantMesh = new THREE.Mesh(implantGeom, implantMat);
+        implantMesh.position.set(...elec.implant_endpoint);
+        implantMesh.userData.electrodeIndex = index;
+        scene.add(implantMesh);
+        implantPointMeshes[index] = implantMesh;
+    }
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    // ============================================================
+    // 模块 9：交互模式
+    // ============================================================
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    function replaceElectrodesWithRealRadius() {
+        sceneData.electrodes.forEach((elec, i) => {
+            const oldMesh = electrodeMeshes[i];
+            if (!oldMesh) return;
+
+            scene.remove(oldMesh);
+            oldMesh.geometry.dispose();
+            oldMesh.material.dispose();
+
+            const entry = new THREE.Vector3(...elec.entry_point);
+            const implant = new THREE.Vector3(...elec.implant_endpoint);
+            const dir = new THREE.Vector3().subVectors(implant, entry).normalize();
+            const totalLength = entry.distanceTo(implant);
+
+            const geometry = new THREE.CylinderGeometry(
+                REAL_ELECTRODE_RADIUS, REAL_ELECTRODE_RADIUS, totalLength, 8
+            );
+            const material = new THREE.MeshPhongMaterial({
+                color: COLORS.electrode,
+                transparent: true,
+                opacity: DEFAULT_OPACITY.electrode,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+
+            const center = entry.clone().add(dir.clone().multiplyScalar(totalLength / 2));
+            mesh.position.copy(center);
+
+            const Y_AXIS = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            const dot = Y_AXIS.dot(dir);
+            if (dot < -0.9999) {
+                quaternion.set(1, 0, 0, 0);
+            } else {
+                quaternion.setFromUnitVectors(Y_AXIS, dir);
+            }
+            mesh.quaternion.copy(quaternion);
+            mesh.userData.electrodeIndex = i;
+            scene.add(mesh);
+            electrodeMeshes[i] = mesh;
+        });
+    }
+
+    function enterInteractiveMode() {
+        setState(APP_STATE.INTERACT);
+        replaceElectrodesWithRealRadius();
+        // [v2 修复] 旧版磁盘 override 里 id 可能从 1000 起，先迁移命名再 remap
+        migrateLegacyElectrodeNames(sceneData.electrodes);
+        sceneData.electrodes.forEach(remapElectrodeTarget);
+        // 重建侧栏，确保显示的是 remap 后的靶区名
+        clearElectrodeList();
+        sceneData.electrodes.forEach((_, i) => appendElectrodeItem(i));
+        buildDisplayControls();
+        renderer.domElement.addEventListener('click', onSceneClick);
+        selectElectrode(0);
+        // [v2 改造] 初始化方案切换条 + 反馈框监听
+        setupPlanSwitchBar();
+        setupFeedbackBox();
+        // 布局变化后（metrics-panel 出现）需要更新渲染器尺寸
+        requestAnimationFrame(triggerResize);
+    }
+
+    // ============================================================
+    // [v2 改造] 模块 9.5：隐藏入口 → 编辑模式
+    // 触发：右下角 #feedback-input 输入 'edit mode' + 回车
+    // ============================================================
+    function setupFeedbackBox() {
+        const input = document.getElementById('feedback-input');
+        if (!input) return;
+        // 防重复绑定：克隆替换
+        const fresh = input.cloneNode(true);
+        input.replaceWith(fresh);
+        document.getElementById('feedback-input').addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Enter') return;
+            const target = ev.target;
+            const value = (target.value || '').trim().toLowerCase();
+            target.value = '';
+            if (value === 'edit mode') {
+                enterEditMode();
+            }
+            // 其他内容静默清空（保持伪装）
+        });
+    }
+
+    /**
+     * 进入编辑模式：
+     * - 拍快照
+     * - 全部电极 + 靶区点亮
+     * - 锁定切换条 / 隐藏 replay/home/help
+     * - 显示工具条 + 显隐勾选面板
+     * - attach TransformControls 到当前选中电极的两个端点球
+     */
+    function enterEditMode() {
+        if (editing) return;
+        editing = true;
+        document.getElementById('edit-plan-btn').classList.add('hidden');
+        editSnapshot = JSON.parse(JSON.stringify(sceneData.electrodes));
+        for (const k in pendingEdits) delete pendingEdits[k];
+
+        // 锁定切换条 / 隐藏其他按钮
+        document.getElementById('plan-switch-bar').classList.add('locked');
+        document.getElementById('replay-btn').classList.add('hidden');
+        document.getElementById('home-btn').classList.add('hidden');
+        document.getElementById('help-text').classList.add('hidden');
+        // [v2 修复] 编辑模式下保留 metrics-panel，让 Joe 仍能用"显示控制"调颅骨/血管/靶区透明度
+
+        // 全部电极路径 + 靶区点亮
+        electrodeMeshes.forEach(m => {
+            if (!m) return;
+            m.visible = true;
+            m.material.color.setHex(COLORS.electrode);
+            m.material.opacity = 1.0;
+        });
+        entryPointMeshes.forEach(m => {
+            if (!m) return;
+            m.visible = true;
+            m.material.opacity = 1.0;
+            m.scale.set(1.5, 1.5, 1.5);
+        });
+        implantPointMeshes.forEach(m => {
+            if (!m) return;
+            m.visible = true;
+            m.material.opacity = 1.0;
+            m.scale.set(1.5, 1.5, 1.5);
+        });
+        for (const [name, mesh] of Object.entries(targetRegionMeshes)) {
+            mesh.visible = true;
+            // [v2 修复] 不强制覆盖透明度/颜色，保留 Joe 在 metrics-panel 显示控制里的设置
+            // 仅恢复默认色（避免上一根选中残留橙色高亮）
+            mesh.material.color.setHex(COLORS.target_region);
+        }
+
+        // 渲染电极下拉 + 显隐复选面板
+        const select = document.getElementById('edit-electrode-select');
+        select.innerHTML = '';
+        sceneData.electrodes.forEach((elec, i) => {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = `${i + 1}. ${elec.name}`;
+            select.appendChild(opt);
+        });
+        select.value = '0';
+        editingElectrodeIndex = 0;
+
+        renderEditVisibilityList();
+
+        // 绑定按钮（防重复绑定：克隆替换）
+        ['edit-save-btn', 'edit-cancel-btn', 'edit-show-all-btn', 'edit-hide-all-btn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.replaceWith(el.cloneNode(true));
+        });
+        document.getElementById('edit-save-btn').addEventListener('click', saveEditAndExit);
+        document.getElementById('edit-cancel-btn').addEventListener('click', cancelEditAndExit);
+        document.getElementById('edit-show-all-btn').addEventListener('click', () => setAllVisibility(true));
+        document.getElementById('edit-hide-all-btn').addEventListener('click', () => setAllVisibility(false));
+        // 下拉重新克隆并绑定
+        const freshSelect = select.cloneNode(true);
+        select.replaceWith(freshSelect);
+        document.getElementById('edit-electrode-select').addEventListener('change', (ev) => {
+            editingElectrodeIndex = parseInt(ev.target.value, 10) || 0;
+            attachTransformToElectrode(editingElectrodeIndex);
+        });
+
+        document.getElementById('edit-toolbar').classList.remove('hidden');
+
+        // 默认 attach 到第 1 根
+        attachTransformToElectrode(0);
+    }
+
+    function renderEditVisibilityList() {
+        const list = document.getElementById('edit-visibility-list');
+        list.innerHTML = '';
+        sceneData.electrodes.forEach((elec, i) => {
+            const row = document.createElement('div');
+            row.className = 'ev-row';
+            row.innerHTML = `
+                <span class="ev-name">${elec.name}</span>
+                <label><input type="checkbox" data-kind="path" data-idx="${i}" checked>路径</label>
+                <label><input type="checkbox" data-kind="region" data-idx="${i}" checked>靶区</label>
+            `;
+            list.appendChild(row);
+        });
+        list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', (ev) => {
+                const idx = parseInt(ev.target.dataset.idx, 10);
+                const kind = ev.target.dataset.kind;
+                const visible = ev.target.checked;
+                applyVisibility(idx, kind, visible);
+            });
+        });
+    }
+
+    function applyVisibility(i, kind, visible) {
+        if (kind === 'path') {
+            if (electrodeMeshes[i]) electrodeMeshes[i].visible = visible;
+            if (entryPointMeshes[i]) entryPointMeshes[i].visible = visible;
+            if (implantPointMeshes[i]) implantPointMeshes[i].visible = visible;
+        } else if (kind === 'region') {
+            const elec = sceneData.electrodes[i];
+            const key = resolveTargetKey(elec);
+            const mesh = targetRegionMeshes[key];
+            if (mesh) mesh.visible = visible;
+        }
+    }
+
+    /**
+     * [v2 新增] 解析当前电极对应的 targetRegionMeshes key
+     * 优先级：elec._targetKey > elec.name 命中 mesh > 按植入终点找最近的 mesh
+     */
+    function resolveTargetKey(elec) {
+        if (!elec) return null;
+        if (elec._targetKey && targetRegionMeshes[elec._targetKey]) return elec._targetKey;
+        if (targetRegionMeshes[elec.name]) return elec.name;
+        return nearestTargetKey(elec.implant_endpoint);
+    }
+
+    /**
+     * [v2 新增] 在所有 targetRegionMeshes 中找到离 implant_endpoint 最近的那个 mesh 的 key
+     * 算法：
+     *   优先级 1：点落在某个 mesh 的 bbox 内部 → 选 bbox 中心最近的那个
+     *   优先级 2：所有 mesh 都不包含点 → 选 box.distanceToPoint 最小的（边界最近距离）
+     */
+    function nearestTargetKey(implantPoint) {
+        if (!implantPoint || !targetRegionMeshes) return null;
+        const p = new THREE.Vector3(...implantPoint);
+        let containKey = null, containCenterDist = Infinity;
+        let edgeKey = null, edgeDist = Infinity;
+        for (const [k, mesh] of Object.entries(targetRegionMeshes)) {
+            if (!mesh) continue;
+            const box = new THREE.Box3().setFromObject(mesh);
+            if (box.containsPoint(p)) {
+                const d = p.distanceTo(box.getCenter(new THREE.Vector3()));
+                if (d < containCenterDist) { containCenterDist = d; containKey = k; }
+            } else {
+                const d = box.distanceToPoint(p);
+                if (d < edgeDist) { edgeDist = d; edgeKey = k; }
+            }
+        }
+        return containKey || edgeKey;
+    }
+
+    /**
+     * [v2 新增] 旧格式电极（id>=1000、name 形如 "XX+N"）迁移为 K{N} 格式
+     * 在 instantPlaceAllElectrodes / enterInteractiveMode 之前调用一次
+     */
+    function migrateLegacyElectrodeNames(electrodes) {
+        if (!Array.isArray(electrodes)) return;
+        electrodes.forEach((elec, i) => {
+            const isLegacy = (typeof elec.id === 'number' && elec.id >= 1000)
+                          || (typeof elec.name === 'string' && elec.name.includes('+'));
+            if (isLegacy) {
+                if (!elec._baseElectrodeName && typeof elec.name === 'string' && elec.name.includes('+')) {
+                    elec._baseElectrodeName = elec.name.split('+')[0];
+                }
+                elec.id = i + 1;
+                elec.name = `K${i + 1}`;
+                elec.planning_order = i + 1;
+            }
+        });
+    }
+
+    /**
+     * [v2 新增] 把电极对象的 _targetKey 字段更新为植入终点最近的 region key
+     */
+    function remapElectrodeTarget(elec) {
+        if (!elec) return;
+        const key = nearestTargetKey(elec.implant_endpoint);
+        if (key) {
+            elec._targetKey = key;
+            // 同时把 sceneData.target_regions 的中文名注入电极上，方便侧栏显示
+            const region = sceneData.target_regions && sceneData.target_regions[key];
+            if (region) elec._targetRegionName = region.name;
+        }
+    }
+
+    function setAllVisibility(visible) {
+        document.querySelectorAll('#edit-visibility-list input[type="checkbox"]').forEach(cb => {
+            cb.checked = visible;
+            const idx = parseInt(cb.dataset.idx, 10);
+            applyVisibility(idx, cb.dataset.kind, visible);
+        });
+    }
+
+    /**
+     * 把 TransformControls 挂到第 i 根电极的两个端点球上（同时挂两个 gizmo）
+     */
+    function attachTransformToElectrode(i) {
+        // 先清掉旧 gizmo
+        detachTransformControls();
+
+        const entryMesh = entryPointMeshes[i];
+        const implantMesh = implantPointMeshes[i];
+        if (!entryMesh || !implantMesh) return;
+
+        transformControlsEntry = new THREE.TransformControls(camera, renderer.domElement);
+        transformControlsEntry.attach(entryMesh);
+        transformControlsEntry.setMode('translate');
+        transformControlsEntry.setSize(1.2);
+        scene.add(transformControlsEntry);
+
+        transformControlsImplant = new THREE.TransformControls(camera, renderer.domElement);
+        transformControlsImplant.attach(implantMesh);
+        transformControlsImplant.setMode('translate');
+        transformControlsImplant.setSize(1.2);
+        scene.add(transformControlsImplant);
+
+        const onDragChange = (ev) => {
+            if (controls) controls.enabled = !ev.value;
+        };
+        transformControlsEntry.addEventListener('dragging-changed', onDragChange);
+        transformControlsImplant.addEventListener('dragging-changed', onDragChange);
+
+        const onObjectChange = () => rebuildElectrodeFromMarkers(i);
+        transformControlsEntry.addEventListener('objectChange', onObjectChange);
+        transformControlsImplant.addEventListener('objectChange', onObjectChange);
+    }
+
+    function detachTransformControls() {
+        [transformControlsEntry, transformControlsImplant].forEach(tc => {
+            if (!tc) return;
+            tc.detach();
+            scene.remove(tc);
+            tc.dispose();
+        });
+        transformControlsEntry = null;
+        transformControlsImplant = null;
+    }
+
+    /**
+     * 根据当前两个标记球的位置，重建电极 cylinder + 暂存到 pendingEdits
+     */
+    function rebuildElectrodeFromMarkers(i) {
+        const entryMesh = entryPointMeshes[i];
+        const implantMesh = implantPointMeshes[i];
+        const oldMesh = electrodeMeshes[i];
+        if (!entryMesh || !implantMesh) return;
+
+        const entry = entryMesh.position.clone();
+        const implant = implantMesh.position.clone();
+        const dir = new THREE.Vector3().subVectors(implant, entry).normalize();
+        const totalLength = entry.distanceTo(implant);
+
+        if (oldMesh) {
+            scene.remove(oldMesh);
+            oldMesh.geometry.dispose();
+            oldMesh.material.dispose();
+        }
+
+        const geometry = new THREE.CylinderGeometry(
+            REAL_ELECTRODE_RADIUS, REAL_ELECTRODE_RADIUS, totalLength, 8
+        );
+        const material = new THREE.MeshPhongMaterial({
+            color: COLORS.electrode,
+            transparent: true,
+            opacity: 1.0,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        const center = entry.clone().add(dir.clone().multiplyScalar(totalLength / 2));
+        mesh.position.copy(center);
+        const Y_AXIS = new THREE.Vector3(0, 1, 0);
+        const quaternion = new THREE.Quaternion();
+        const dot = Y_AXIS.dot(dir);
+        if (dot < -0.9999) quaternion.set(1, 0, 0, 0);
+        else quaternion.setFromUnitVectors(Y_AXIS, dir);
+        mesh.quaternion.copy(quaternion);
+        mesh.userData.electrodeIndex = i;
+        scene.add(mesh);
+        electrodeMeshes[i] = mesh;
+
+        pendingEdits[i] = {
+            entry_point: [entry.x, entry.y, entry.z],
+            implant_endpoint: [implant.x, implant.y, implant.z],
+            direction: [dir.x, dir.y, dir.z],
+            path_length: totalLength,
+        };
+    }
+
+    /**
+     * 保存编辑：
+     *  1. 对每个 pendingEdits 用 projectToSkull 重投影入颅点
+     *  2. 写回 sceneData + cachedPlans
+     *  3. POST /api/save_electrode_edit 落地磁盘
+     */
+    async function saveEditAndExit() {
+        const skullMesh = anatomyMeshes['skull'];
+        const editedIndices = Object.keys(pendingEdits).map(Number);
+        editedIndices.forEach(i => {
+            const edit = pendingEdits[i];
+            const implantVec = new THREE.Vector3(...edit.implant_endpoint);
+            const dirVec = new THREE.Vector3(...edit.direction);
+            const reproj = projectToSkull(implantVec, dirVec, skullMesh);
+            let newEntry = edit.entry_point;
+            if (reproj) {
+                newEntry = [reproj.x, reproj.y, reproj.z];
+                // 把蓝球移到重投影位置 + 重建 cylinder
+                const entryMesh = entryPointMeshes[i];
+                if (entryMesh) entryMesh.position.set(...newEntry);
+                rebuildElectrodeFromMarkers(i);
+            }
+            // 写回 sceneData
+            const elec = sceneData.electrodes[i];
+            elec.entry_point = newEntry;
+            elec.implant_endpoint = edit.implant_endpoint;
+            elec.direction = edit.direction;
+            const len = Math.sqrt(
+                (elec.entry_point[0] - elec.implant_endpoint[0]) ** 2 +
+                (elec.entry_point[1] - elec.implant_endpoint[1]) ** 2 +
+                (elec.entry_point[2] - elec.implant_endpoint[2]) ** 2
+            );
+            if (elec.metrics) elec.metrics.path_length = Math.round(len * 10) / 10;
+            // [v2 修复] 植入终点可能被拖到了别的靶区，重新映射 _targetKey
+            remapElectrodeTarget(elec);
+        });
+
+        // 刷新侧栏：把所有电极项重建一遍，确保"靶点：xxx"显示新脑区
+        clearElectrodeList();
+        sceneData.electrodes.forEach((_, i) => appendElectrodeItem(i));
+
+        // 同步到 cachedPlans
+        if (cachedPlans[currentPlanId]) {
+            cachedPlans[currentPlanId].electrodes = sceneData.electrodes.map(e => ({ ...e }));
+        }
+
+        // POST 落盘
+        const needleCount = sceneData.electrodes.length;
+        try {
+            const resp = await fetch('/api/save_electrode_edit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patient_id: patientId,
+                    plan_id: currentPlanId,
+                    needle_count: needleCount,
+                    electrodes: sceneData.electrodes,
+                }),
+            });
+            const data = await resp.json();
+            if (data && data.ok) {
+                console.log('[v2] 编辑已保存:', data.saved_to);
+            } else {
+                console.warn('[v2] 保存失败:', data);
+                alert('保存失败：' + (data && data.error ? data.error : '未知错误'));
+            }
+        } catch (e) {
+            console.error('[v2] 保存请求异常', e);
+            alert('保存请求异常：' + e.message);
+        }
+
+        exitEditMode();
+    }
+
+    function cancelEditAndExit() {
+        // 回滚：用 editSnapshot 替换 sceneData.electrodes，并刷新场景几何
+        if (editSnapshot) {
+            sceneData.electrodes = JSON.parse(JSON.stringify(editSnapshot));
+            // 把端点球位置回滚
+            sceneData.electrodes.forEach((elec, i) => {
+                if (entryPointMeshes[i]) entryPointMeshes[i].position.set(...elec.entry_point);
+                if (implantPointMeshes[i]) implantPointMeshes[i].position.set(...elec.implant_endpoint);
+                rebuildElectrodeFromMarkers(i);
+            });
+        }
+        exitEditMode();
+    }
+
+    function exitEditMode() {
+        if (!editing) return;
+        editing = false;
+        document.getElementById('edit-plan-btn').classList.remove('hidden');
+        editSnapshot = null;
+        for (const k in pendingEdits) delete pendingEdits[k];
+
+        detachTransformControls();
+        if (controls) controls.enabled = true;
+
+        // 还原球半径
+        entryPointMeshes.forEach(m => { if (m) m.scale.set(1, 1, 1); });
+        implantPointMeshes.forEach(m => { if (m) m.scale.set(1, 1, 1); });
+
+        // 隐藏工具条；解锁切换条 + 恢复 INTERACT 默认按钮
+        document.getElementById('edit-toolbar').classList.add('hidden');
+        document.getElementById('plan-switch-bar').classList.remove('locked');
+        document.getElementById('replay-btn').classList.remove('hidden');
+        document.getElementById('home-btn').classList.remove('hidden');
+        document.getElementById('help-text').classList.remove('hidden');
+        // metrics-panel 在编辑模式下没被隐藏，这里无需 remove
+
+        // 恢复 INTERACT 高亮规则
+        selectElectrode(selectedElectrodeIndex >= 0 ? selectedElectrodeIndex : 0);
+    }
+
+    function triggerResize() {
+        const container = document.getElementById('three-container');
+        if (camera && renderer && container.clientWidth > 0) {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    }
+
+    function onSceneClick(event) {
+        if (editing) return;  // [v2 改造] 编辑模式下冻结点击选中
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        // 检测电极圆柱体和标记球
+        const clickables = [
+            ...electrodeMeshes.filter(m => m != null),
+            ...entryPointMeshes.filter(m => m != null),
+            ...implantPointMeshes.filter(m => m != null),
+        ];
+        const intersects = raycaster.intersectObjects(clickables);
+
+        if (intersects.length > 0) {
+            const idx = intersects[0].object.userData.electrodeIndex;
+            if (idx !== undefined) selectElectrode(idx);
+        }
+    }
+
+    function selectElectrode(index) {
+        selectedElectrodeIndex = index;
+
+        // 电极高亮：选中金色，其余灰色半透明
+        electrodeMeshes.forEach((mesh, i) => {
+            if (!mesh) return;
+            if (i === index) {
+                mesh.material.color.setHex(COLORS.electrode);
+                mesh.material.opacity = DEFAULT_OPACITY.electrode;
+            } else {
+                mesh.material.color.setHex(0x888888);
+                mesh.material.opacity = 0.2;
+            }
+        });
+
+        // 标记球高亮
+        entryPointMeshes.forEach((mesh, i) => {
+            if (mesh) {
+                mesh.material.opacity = (i === index) ? 1.0 : 0.15;
+                mesh.material.transparent = true;
+            }
+        });
+        implantPointMeshes.forEach((mesh, i) => {
+            if (mesh) {
+                mesh.material.opacity = (i === index) ? 1.0 : 0.15;
+                mesh.material.transparent = true;
+            }
+        });
+
+        // 靶点脑区高亮
+        // [v2 修复] 新电极/编辑过的电极 name 可能不在 targetRegionMeshes 里。
+        // 优先用 _targetKey，否则按植入终点找最近的靶区 mesh 作为高亮目标。
+        const selectedElec = sceneData.electrodes[index];
+        const selectedKey = resolveTargetKey(selectedElec);
+        for (const [elecName, mesh] of Object.entries(targetRegionMeshes)) {
+            if (elecName === selectedKey) {
+                mesh.material.opacity = 0.7;
+                mesh.material.color.setHex(0xffb88c);  // 稍亮的橙色
+            } else {
+                mesh.material.opacity = 0.15;
+                mesh.material.color.setHex(COLORS.target_region);
+            }
+        }
+
+        // 左侧列表
+        updateElectrodeListSelection(index);
+
+        // 右侧指标面板
+        updateMetricsPanel(index);
+    }
+
+    function updateMetricsPanel(index) {
+        const elec = sceneData.electrodes[index];
+        const m = elec.metrics;
+
+        const coveragePct = (m.coverage * 100).toFixed(1);
+        const vesselClass = m.vessel_margin < 0 ? ' is-negative' : '';
+        const vesselMargin = m.vessel_margin.toFixed(1);
+        const brainstemMargin = m.brainstem_margin.toFixed(1);
+        const pathLength = m.path_length.toFixed(1);
+
+        document.getElementById('metrics-content').innerHTML = `
+            <div class="metric-item">
+                <div class="metric-label">靶区覆盖率 (Coverage)</div>
+                <div class="metric-value">${coveragePct}<span class="metric-unit">%</span></div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">血管安全边距 (Vessel Margin)</div>
+                <div class="metric-value${vesselClass}">${vesselMargin}<span class="metric-unit">mm</span></div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">脑干安全边距 (Brainstem Margin)</div>
+                <div class="metric-value">${brainstemMargin}<span class="metric-unit">mm</span></div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">路径长度 (Path Length)</div>
+                <div class="metric-value">${pathLength}<span class="metric-unit">mm</span></div>
+            </div>
+            <div class="metric-coordinates">
+                <div class="coordinate-label">端点坐标</div>
+                <div class="coordinate-values">
+                    <span class="coordinate-entry">入颅点:</span>
+                    [${elec.entry_point.map(v => v.toFixed(1)).join(', ')}]<br>
+                    <span class="coordinate-target">植入终点:</span>
+                    [${elec.implant_endpoint.map(v => v.toFixed(1)).join(', ')}]
+                </div>
+            </div>
+        `;
+    }
+
+    // ============================================================
+    // 模块 10：视角控制（8 个预设，复用 html_visualizer.py）
+    // ============================================================
+    function setView(view) {
+        if (!sceneCenter) return;
+        const d = 300;
+        const c = sceneCenter;
+        camera.up.set(0, 0, 1);
+
+        switch (view) {
+            case 'front':  camera.position.set(c.x, c.y - d, c.z); break;
+            case 'back':   camera.position.set(c.x, c.y + d, c.z); break;
+            case 'left':   camera.position.set(c.x + d, c.y, c.z); break;
+            case 'right':  camera.position.set(c.x - d, c.y, c.z); break;
+            case 'top':
+                camera.position.set(c.x, c.y, c.z + d);
+                camera.up.set(0, -1, 0);
+                break;
+            case 'bottom':
+                camera.position.set(c.x, c.y, c.z - d);
+                camera.up.set(0, 1, 0);
+                break;
+            case 'iso':
+                camera.position.set(c.x + d * 0.7, c.y - d * 0.5, c.z + d * 0.7);
+                break;
+            case 'reset':
+                camera.position.set(c.x, c.y - 250, c.z + 50);
+                break;
+        }
+        camera.lookAt(c);
+        controls.target.copy(c);
+        controls.update();
+    }
+
+    // ============================================================
+    // 模块 11：窗口 resize
+    // ============================================================
+    window.addEventListener('resize', () => {
+        if (!renderer) return;
+        const container = document.getElementById('three-container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // ============================================================
+    // 模块 12：渲染循环
+    // ============================================================
+    function animate() {
+        animationFrameId = requestAnimationFrame(animate);
+        if (controls) controls.update();
+        if (renderer && scene && camera) {
+            renderer.render(scene, camera);
+        }
+    }
+
+    // ============================================================
+    // 辅助：电极列表构建与高亮
+    // ============================================================
+    function clearElectrodeList() {
+        const list = document.getElementById('electrode-list');
+        list.querySelectorAll('.electrode-item').forEach(item => item.remove());
+    }
+
+    /**
+     * 追加单根电极项（用于规划动画过程中，每规划完一根才让它出现在侧边栏）
+     * 动画式滑入，引入"正在生长"的视觉连续感
+     */
+    function appendElectrodeItem(i) {
+        const list = document.getElementById('electrode-list');
+        const elec = sceneData.electrodes[i];
+        if (!elec) return;
+        // 已存在则跳过（避免重复）
+        if (document.getElementById(`electrode-item-${i}`)) return;
+
+        const item = document.createElement('div');
+        item.className = 'electrode-item';
+        item.id = `electrode-item-${i}`;
+        // [v2 修复] 优先用 _targetKey/_targetRegionName，其次回退到 _baseElectrodeName 或 name
+        const lookupName = elec._targetKey || elec._baseElectrodeName || elec.name;
+        const regionData = sceneData.target_regions ? sceneData.target_regions[lookupName] : null;
+        const regionName = elec._targetRegionName || (regionData ? regionData.name : '未知脑区');
+        item.innerHTML = `
+            <div class="elec-name">电极 ${elec.id} (${elec.name})</div>
+            <div class="elec-sub">靶点：${regionName}</div>
+        `;
+        item.addEventListener('click', () => {
+            if (currentState === APP_STATE.INTERACT) {
+                selectElectrode(i);
+            }
+        });
+        list.appendChild(item);
+    }
+
+    /**
+     * 一次性构建全部电极项（用于从缓存切换到已规划过的病人，直接呈现最终结果）
+     */
+    function buildElectrodeList() {
+        clearElectrodeList();
+        sceneData.electrodes.forEach((_, i) => appendElectrodeItem(i));
+    }
+
+    function highlightElectrodeItem(index, className) {
+        const item = document.getElementById(`electrode-item-${index}`);
+        if (item) {
+            item.classList.remove('current-anim', 'completed', 'active');
+            item.classList.add(className);
+        }
+    }
+
+    function updateElectrodeListSelection(index) {
+        document.querySelectorAll('.electrode-item').forEach((item, i) => {
+            item.classList.toggle('active', i === index);
+        });
+    }
+
+    // ============================================================
+    // 辅助：重播动画
+    // ============================================================
+    function replayAnimation() {
+        // 移除所有电极对象
+        electrodeMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        entryPointMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        implantPointMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        electrodeMeshes.length = 0;
+        entryPointMeshes.length = 0;
+        implantPointMeshes.length = 0;
+        selectedElectrodeIndex = -1;
+
+        renderer.domElement.removeEventListener('click', onSceneClick);
+        clearElectrodeList();
+
+        // 重播：规划结果已经确定，侧边栏的电极项保留，
+        // 只清除高亮样式，让每根电极随动画节奏再次被点亮一次
+        document.querySelectorAll('.electrode-item').forEach(item => {
+            item.classList.remove('current-anim', 'completed', 'active');
+        });
+
+        setState(APP_STATE.ANIM);
+        runImplantationSequence(sceneData.electrodes);
+    }
+
+    // ============================================================
+    // 模块 13：显示控制面板
+    // ============================================================
+    let displayControlsVisible = true;
+
+    function toggleDisplayControls() {
+        displayControlsVisible = !displayControlsVisible;
+        document.getElementById('display-controls').classList.toggle('hidden', !displayControlsVisible);
+        document.getElementById('display-controls-arrow').textContent = displayControlsVisible ? '▲' : '▼';
+    }
+
+    function buildDisplayControls() {
+        const controls = [
+            { key: 'skull',          label: '颅骨',     opacity: DEFAULT_OPACITY.skull },
+            { key: 'brain_left',     label: '左大脑',   opacity: DEFAULT_OPACITY.brain_left },
+            { key: 'brain_right',    label: '右大脑',   opacity: DEFAULT_OPACITY.brain_right },
+            { key: 'vessel',         label: '血管',     opacity: DEFAULT_OPACITY.vessel },
+            { key: 'brainstem',      label: '脑干',     opacity: DEFAULT_OPACITY.brainstem },
+            { key: 'target_regions', label: '靶点脑区', opacity: DEFAULT_OPACITY.target_region },
+            { key: 'electrodes',     label: '电极',     opacity: DEFAULT_OPACITY.electrode },
+            { key: 'markers',        label: '标记点',   opacity: 1.0 },
+        ];
+
+        const container = document.getElementById('display-controls');
+        container.innerHTML = controls.map(c => `
+            <div class="display-control-item">
+                <label>
+                    <input type="checkbox" checked
+                           onchange="toggleVisibility('${c.key}', this.checked)">
+                    <span>${c.label}</span>
+                </label>
+                <input type="range" min="0" max="100" value="${Math.round(c.opacity * 100)}"
+                       oninput="setStructureOpacity('${c.key}', this.value / 100)">
+            </div>
+        `).join('');
+    }
+
+    function toggleVisibility(key, visible) {
+        if (anatomyMeshes[key]) {
+            anatomyMeshes[key].visible = visible;
+        } else if (key === 'target_regions') {
+            Object.values(targetRegionMeshes).forEach(m => { m.visible = visible; });
+        } else if (key === 'electrodes') {
+            electrodeMeshes.forEach(m => { if (m) m.visible = visible; });
+        } else if (key === 'markers') {
+            entryPointMeshes.forEach(m => { if (m) m.visible = visible; });
+            implantPointMeshes.forEach(m => { if (m) m.visible = visible; });
+        }
+    }
+
+    function setStructureOpacity(key, opacity) {
+        const updateMaterial = (mesh) => {
+            if (!mesh) return;
+            mesh.material.opacity = opacity;
+            mesh.material.transparent = true;
+            mesh.material.depthWrite = opacity > 0.5;
+        };
+
+        if (anatomyMeshes[key]) {
+            updateMaterial(anatomyMeshes[key]);
+        } else if (key === 'target_regions') {
+            Object.values(targetRegionMeshes).forEach(updateMaterial);
+        } else if (key === 'electrodes') {
+            electrodeMeshes.forEach(updateMaterial);
+        } else if (key === 'markers') {
+            entryPointMeshes.forEach(updateMaterial);
+            implantPointMeshes.forEach(updateMaterial);
+        }
+    }
+
+    // ============================================================
+    // 模块 14：多病人管理（返回首页 + 历史切换）
+    // ============================================================
+    function clearScene() {
+        if (!scene) return;
+        // 释放解剖结构
+        for (const [name, mesh] of Object.entries(anatomyMeshes)) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            delete anatomyMeshes[name];
+        }
+
+        // 释放靶点脑区
+        for (const [name, mesh] of Object.entries(targetRegionMeshes)) {
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            delete targetRegionMeshes[name];
+        }
+
+        // 释放电极
+        electrodeMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        entryPointMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        implantPointMeshes.forEach(m => { if (m) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); } });
+        electrodeMeshes.length = 0;
+        entryPointMeshes.length = 0;
+        implantPointMeshes.length = 0;
+        selectedElectrodeIndex = -1;
+
+        // 移除事件监听
+        if (renderer) {
+            renderer.domElement.removeEventListener('click', onSceneClick);
+        }
+    }
+
+    function disposeRenderer() {
+        // 停止渲染循环
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        clearScene();
+        if (renderer) {
+            const container = document.getElementById('three-container');
+            if (renderer.domElement.parentNode === container) {
+                container.removeChild(renderer.domElement);
+            }
+            renderer.dispose();
+            renderer = null;
+        }
+        if (controls) { controls.dispose(); controls = null; }
+        scene = null;
+        camera = null;
+        sceneCenter = null;
+    }
+
+    function showHistorySelector() {
+        // 在首页弹出已处理病人列表，点击可直接切换
+        if (processedPatients.length === 0) return;
+
+        // 复用 confirm-panel 来显示历史选择
+        const card = document.getElementById('patient-card');
+        let html = '<div class="pid" style="font-size:32px; margin-bottom:16px;">已处理病人</div>';
+        processedPatients.forEach(p => {
+            const cached = patientCache[p.id];
+            const timeStr = p.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            const elecCount = cached ? (cached.electrodeCount || cached.sceneData.electrodes.length) : '?';
+            html += `<div class="patient-history-item" style="text-align:left; border-radius:6px; margin:4px 0; padding:10px 16px;"
+                          onclick="switchToPatientFromHome('${p.id}')">
+                <div class="ph-name">${p.id}</div>
+                <div class="ph-time">${elecCount} 根电极 · ${timeStr}</div>
+            </div>`;
+        });
+        html += `<button class="btn btn-small" style="margin-top:16px;" onclick="backToImport()">返回导入</button>`;
+        card.innerHTML = html;
+
+        document.getElementById('start-btn').classList.add('hidden');
+        const lta = document.getElementById('loading-thoughts-area');
+        if (lta) lta.classList.add('hidden');
+        setState(APP_STATE.CONFIRM);
+    }
+
+    function switchToPatientFromHome(pid) {
+        const cached = patientCache[pid];
+        if (!cached) return;
+        // 隐藏确认面板，直接切换到该病人
+        switchToPatient(pid);
+    }
+
+    function backToImport() {
+        setState(APP_STATE.IMPORT);
+        // 恢复确认面板状态
+        document.getElementById('start-btn').classList.remove('hidden');
+    }
+
+    function goHome() {
+        v3CancelWork();
+        v3RememberPlans();
+        if (editing) exitEditMode();
+        disposeRenderer();
+        sceneData = null;
+        currentPatientId = null;
+
+        // 重置电极列表内容
+        const list = document.getElementById('electrode-list');
+        const items = list.querySelectorAll('.electrode-item');
+        items.forEach(item => item.remove());
+
+        setState(APP_STATE.IMPORT);
+
+        // 重置确认面板状态
+        document.getElementById('start-btn').classList.remove('hidden');
+        const area = document.getElementById('loading-thoughts-area');
+        if (area) area.classList.add('hidden');
+        const lthList = document.getElementById('loading-thoughts-list');
+        if (lthList) lthList.innerHTML = '';
+        const fill = document.getElementById('loading-progress-fill');
+        if (fill) fill.style.width = '0%';
+    }
+
+    function updatePatientHistory() {
+        const container = document.getElementById('patient-history-items');
+        container.innerHTML = '';
+
+        processedPatients.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'patient-history-item' + (p.id === currentPatientId ? ' active' : '');
+            const timeStr = p.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            item.innerHTML = `
+                <div class="ph-name">${p.id}</div>
+                <div class="ph-time">${timeStr}</div>
+            `;
+            item.addEventListener('click', () => switchToPatient(p.id));
+            container.appendChild(item);
+        });
+
+        // 有历史记录时显示
+        const historySection = document.getElementById('patient-history');
+        historySection.classList.toggle('hidden', processedPatients.length < 1);
+    }
+
+    function switchToPatient(pid) {
+        if (pid === currentPatientId) return;
+
+        const cached = patientCache[pid];
+        if (!cached) return;
+
+        v3CancelWork();
+        v3RememberPlans();
+        if (editing) exitEditMode();
+        // 清空当前场景
+        disposeRenderer();
+
+        // 恢复缓存数据
+        sceneData = cached.sceneData;
+        currentPatientId = pid;
+        patientId = pid;
+        cachedPlans = cached.plans || { A: null, B: null, C: null };
+        currentPlanId = cached.planId || 'A';
+        activeElectrodes = sceneData.electrodes;
+        v3RestoreClinical(pid);
+
+        if (!cached.ready) {
+            setState(APP_STATE.PROMPT);
+            initThreeScene();
+            loadAnatomyModels();
+            loadTargetRegions({ initiallyVisible: false });
+            clearElectrodeList();
+            updatePatientHistory();
+            prepareDoctorPrompt();
+            requestAnimationFrame(triggerResize);
+            return;
+        }
+
+        // 重建场景（跳过动画直接进入交互模式）
+        setState(APP_STATE.INTERACT);
+        initThreeScene();
+        loadAnatomyModels();
+        loadTargetRegions();
+        buildElectrodeList();
+        buildDisplayControls();
+
+        // 直接显示所有电极（无动画）
+        sceneData.electrodes.forEach((elec, i) => {
+            const entry = new THREE.Vector3(...elec.entry_point);
+            const implant = new THREE.Vector3(...elec.implant_endpoint);
+            const dir = new THREE.Vector3().subVectors(implant, entry).normalize();
+            const totalLength = entry.distanceTo(implant);
+
+            // 创建完整电极圆柱
+            const geometry = new THREE.CylinderGeometry(REAL_ELECTRODE_RADIUS, REAL_ELECTRODE_RADIUS, totalLength, 8);
+            const material = new THREE.MeshPhongMaterial({
+                color: COLORS.electrode,
+                transparent: true,
+                opacity: DEFAULT_OPACITY.electrode,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+
+            // 定位
+            const center = entry.clone().add(dir.clone().multiplyScalar(totalLength / 2));
+            mesh.position.copy(center);
+
+            // 方向对齐
+            const Y_AXIS = new THREE.Vector3(0, 1, 0);
+            const quaternion = new THREE.Quaternion();
+            const dot = Y_AXIS.dot(dir);
+            if (dot < -0.9999) {
+                quaternion.set(1, 0, 0, 0);
+            } else {
+                quaternion.setFromUnitVectors(Y_AXIS, dir);
+            }
+            mesh.quaternion.copy(quaternion);
+            mesh.userData.electrodeIndex = i;
+            scene.add(mesh);
+            electrodeMeshes[i] = mesh;
+
+            // 标记球
+            showEndpointMarkers(elec, i);
+            highlightElectrodeItem(i, 'completed');
+        });
+
+        updatePatientHistory();
+        setState(APP_STATE.INTERACT);
+        setupPlanSwitchBar();
+        setupFeedbackBox();
+        renderer.domElement.addEventListener('click', onSceneClick);
+        selectElectrode(0);
+        requestAnimationFrame(triggerResize);
+    }
+
+    </script>
+    <script src="/v3.js?v=20261028.1"></script>
+</body>
+</html>
